@@ -3598,22 +3598,33 @@ async function loadActRoutes(location, type) {
     var data = await r.json();
     var curated = data.routes || [];
  
-        // 2. Fetch RideWithGPS routes (cycling tab only)
+    // 2. Fetch RideWithGPS routes (cycling tab only)
     var rwgps = [];
+    var rwgpsStatus = '';
     if (type === 'cycle') {
       try {
         var rwParams = new URLSearchParams({
           action: 'discover_ridewithgps',
-          limit:  20,
+          page: 1,
+          page_size: 200,
           _:      Date.now()
         });
         var rwR    = await fetch(API_URL + '?' + rwParams.toString(), { redirect: 'follow' });
         var rwData = await rwR.json();
-        rwgps = rwData.routes || [];
+        if (rwData.success === false || rwData.error) {
+          rwgpsStatus = rwData.error || 'RideWithGPS could not be loaded';
+        } else {
+          rwgps = rwData.routes || [];
+        }
       } catch(rwErr) {
+        rwgpsStatus = 'RideWithGPS could not be loaded';
         console.warn('RideWithGPS fetch failed:', rwErr.message);
       }
     }
+
+    // Show saved routes as soon as they arrive. Nearby OpenStreetMap routes
+    // are slower and can enrich the same list when their request completes.
+    renderActRouteList(container, curated, [], type, rwgps, rwgpsStatus, true);
 
     // 3. Discover Overpass routes
     var overpass = [];
@@ -3638,7 +3649,7 @@ async function loadActRoutes(location, type) {
     }
  
     // Render combined list
-    renderActRouteList(container, curated, overpass, type, rwgps);
+    renderActRouteList(container, curated, overpass, type, rwgps, rwgpsStatus, false);
  
   } catch(err) {
     container.innerHTML = '<div class="act-loading">Could not load routes — tap to upload your own GPX</div>';
@@ -3646,8 +3657,9 @@ async function loadActRoutes(location, type) {
 }
  
 // ── Render route list ─────────────────────────────────────
-function renderActRouteList(container, curated, overpass, type, rwgps) {
+function renderActRouteList(container, curated, overpass, type, rwgps, rwgpsStatus, loadingNearby) {
   rwgps = rwgps || [];
+  rwgpsStatus = rwgpsStatus || '';
   // Keep the loaded collections intact: filters only change the visible cards.
   actRouteCollections[type]={curated:curated,overpass:overpass,rwgps:rwgps};
   var filter=(actCurrentFilters&&actCurrentFilters[type])||'all';
@@ -3678,11 +3690,10 @@ function renderActRouteList(container, curated, overpass, type, rwgps) {
     });
   }
  
-  // Overpass routes
-    if (visibleRWGPS.length) {
+  if (visibleRWGPS.length) {
     html += '<div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted);padding:8px 14px 4px">Your RideWithGPS routes</div>';
     visibleRWGPS.forEach(function(r) {
-      var icon = r.activityType === 'mountain_biking' ? '🚵' : '🚴';
+      var icon = /mountain.?bik|cycling:mountain/i.test((r.activityTypes || []).join(' ') + ' ' + (r.activityType || '')) ? '🚵' : '🚴';
       html += '<div class="act-route-card" onclick="actSelectRWGPS(' + r.id + ',\'' + type + '\')">'
         + '<div class="act-route-icon">' + icon + '</div>'
         + '<div class="act-route-left">'
@@ -3694,6 +3705,10 @@ function renderActRouteList(container, curated, overpass, type, rwgps) {
         + '</div></div>';
     });
        window._actRWGPS = rwgps;
+  }
+
+  if (type === 'cycle' && rwgpsStatus) {
+    html += '<div class="act-loading" style="padding:8px 14px">' + escapeDoHtml(rwgpsStatus) + '</div>';
   }
 
   if (visibleOverpass.length) {
@@ -3712,8 +3727,12 @@ function renderActRouteList(container, curated, overpass, type, rwgps) {
         + '</div></div>';
     });
   }
+
+  if (loadingNearby) {
+    html += '<div class="act-loading" style="padding:10px 14px">Finding named routes nearby…</div>';
+  }
  
-  if (!html) {
+  if (!html && !loadingNearby) {
     html = filter==='all'
       ?'<div class="act-loading">No routes found nearby — upload your own GPX below</div>'
       :'<div class="act-loading">No '+activityFilterLabel(filter)+' routes are currently loaded. Try All or upload your own GPX below.</div>';
@@ -3739,12 +3758,12 @@ function renderActRouteList(container, curated, overpass, type, rwgps) {
 
 function routeMatchesActivityFilter(route,filter,type){
   if(filter==='all')return true;
-  var values=[route.type,route.activityType,route.difficulty,route.tags].filter(Boolean).join(' ').toLowerCase();
+  var values=[route.type,route.activityType,route.activityTypes,route.difficulty,route.tags].filter(Boolean).join(' ').toLowerCase();
   if(filter==='easy'||filter==='moderate')return values.indexOf(filter)!==-1;
   if(filter==='hiking')return /hiking|walk|trail|foot/.test(values);
-  if(filter==='mtb')return /\bmtb\b|mountain.?bik/.test(values);
+  if(filter==='mtb')return /\bmtb\b|mountain.?bik|cycling:mountain/.test(values);
   if(filter==='gravel')return /gravel/.test(values);
-  if(filter==='cycling')return /cycling|road.?cycl|road bike/.test(values);
+  if(filter==='cycling')return !/gravel|\bmtb\b|mountain.?bik|cycling:mountain/.test(values)&&/cycling|road.?cycl|road bike/.test(values);
   return type==='trail'?/hiking|walk|trail|foot/.test(values):/cycling|road|gravel|mtb|mountain.?bik/.test(values);
 }
 
@@ -4213,7 +4232,7 @@ function filterAct(el, filter, type) {
   actCurrentFilter = filter;
   actCurrentFilters[type]=filter;
   var collection=actRouteCollections[type],container=document.getElementById('act-routes-'+type);
-  if(collection&&container)renderActRouteList(container,collection.curated,collection.overpass,type,collection.rwgps);
+  if(collection&&container)renderActRouteList(container,collection.curated,collection.overpass,type,collection.rwgps,'',false);
 }
  
 function actReanalyse(type) {
