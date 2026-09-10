@@ -4363,115 +4363,87 @@ function renderMarineData(container, data, location) {
   var cur      = data.current || {};
   var extremes = data.extremes || [];
   var suit     = data.suitability || {};
- 
-  // Wave direction arrow
-  var waveArrow = windDegToArrow(cur.waveDir || 0);
- 
-  // Tide state indicator
+  var hasTides = extremes.length > 0;
+  var hasMarine = data.marineAvailable === true || [
+    cur.waveHeight,cur.waveDir,cur.wavePeriod,cur.swellHeight,
+    cur.swellDir,cur.currentKnots,cur.currentDir,cur.waterTempC
+  ].some(function(value){return value!==null&&value!==undefined;});
+
+  if (!hasTides && !hasMarine) {
+    container.innerHTML = '<div class="water-inland">'
+      + '<div style="font-size:24px;margin-bottom:6px">🌊</div>'
+      + '<div style="font-weight:600;margin-bottom:4px">No coastal readings for ' + escapeDoHtml(location||'this location') + '</div>'
+      + '<div>Tides, waves, swell and water temperature will appear when Audrey has a coastal location.</div>'
+      + '</div>';
+    return;
+  }
+
   var tideIcon = data.tideState === 'Rising' ? '↑' : '↓';
   var tideColor = data.tideState === 'Rising' ? 'var(--go)' : 'var(--caution)';
- 
-  // Next extreme
   var nextExt = data.nextExtreme;
   var nextStr = '';
   if (nextExt) {
     var nextTime = new Date(nextExt.date).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
     nextStr = nextExt.type + ' ' + nextTime + ' (' + Math.abs(nextExt.height).toFixed(1) + 'm)';
   }
- 
+
   var html = ''
-    // Location + station
     + '<div style="padding:8px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
-    + '<div><div style="font-size:11px;font-weight:600">📍 ' + (location||'Current location') + '</div>'
-    + '<div style="font-size:10px;color:var(--text-muted)">Station: ' + (data.station||'Nearest port') + '</div></div>'
+    + '<div><div style="font-size:11px;font-weight:600">📍 ' + escapeDoHtml(location||'Current location') + '</div>'
+    + (hasTides?'<div style="font-size:10px;color:var(--text-muted)">Station: ' + escapeDoHtml(data.station||'Nearest port') + '</div>':'') + '</div>'
     + '<div style="font-size:10px;color:var(--text-muted)">Open-Meteo · WorldTides</div>'
-    + '</div>'
- 
-    // Tide state banner
-    + '<div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
-    + '<div style="font-family:var(--ui);font-size:14px;font-weight:700;color:' + tideColor + '">'
-    + tideIcon + ' Tide ' + (data.tideState||'—')
-    + '</div>'
-    + '<div style="font-size:11px;color:var(--text-muted)">Next: ' + nextStr + '</div>'
-    + '</div>'
- 
-    // Tide times
-    + '<div class="tide-strip">';
- 
-  // Show today's and tomorrow's extremes
-  var now = new Date();
-  extremes.slice(0, 6).forEach(function(ex) {
-    var exDate  = new Date(ex.date);
-    var exTime  = exDate.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
-    var exDay   = exDate.toLocaleDateString('en-GB', {weekday:'short'});
-    var isNext  = data.nextExtreme && ex.dt === data.nextExtreme.dt;
-    var isHigh  = ex.type === 'High';
-    html += '<div class="tide-row' + (isNext?' tide-now':'') + '">'
-      + '<span class="tide-time">' + exTime + '</span>'
-      + '<span style="font-size:10px;color:var(--text-muted)">' + exDay + '</span>'
-      + '<span class="tide-type" style="color:' + (isHigh?'var(--frost)':'var(--text-muted)') + '">'
-      + (isHigh?'↑ High':'↓ Low') + '</span>'
-      + '<span class="tide-height" style="color:' + (isHigh?'var(--frost)':'var(--text-muted)') + '">'
-      + Math.abs(ex.height).toFixed(1) + 'm</span>'
-      + (isNext ? '<span style="font-size:9px;background:var(--bg3);padding:1px 5px;border-radius:3px">Next</span>' : '<span></span>')
-      + '</div>';
-  });
- 
-  html += '</div>'
- 
-    // Wave conditions
-    + '<div class="water-strip">'
-    + '<div class="water-cell">'
-    + '<div class="water-val" style="color:' + (cur.waveHeight > 1.5 ? 'var(--danger)' : cur.waveHeight > 0.5 ? 'var(--caution)' : 'var(--go)') + '">'
-    + (cur.waveHeight||'—') + 'm</div>'
-    + '<div class="water-label">Wave height</div>'
-    + '<div class="water-sub">' + waveArrow + ' ' + (cur.waveDir||'—') + '° · ' + (cur.wavePeriod||'—') + 's</div>'
-    + '</div>'
-    + '<div class="water-cell">'
-    + '<div class="water-val" style="color:var(--frost)">' + (cur.swellHeight||'—') + 'm</div>'
-    + '<div class="water-label">Swell</div>'
-    + '<div class="water-sub">' + windDegToArrow(cur.swellDir||0) + ' ' + (cur.swellDir||'—') + '°</div>'
-    + '</div>'
-    + '<div class="water-cell">'
-    + '<div class="water-val">' + (cur.currentKnots||'—') + ' kt</div>'
-    + '<div class="water-label">Current</div>'
-    + '<div class="water-sub">' + windDegToArrow(cur.currentDir||0) + ' ' + (cur.currentDir||'—') + '°</div>'
-    + '</div>'
-    + '<div class="water-cell">'
-    + '<div class="water-val" style="color:var(--frost)">' + (cur.waterTempC||'—') + '°C</div>'
-    + '<div class="water-label">Water temp</div>'
-    + '<div class="water-sub">&nbsp;</div>'
-    + '</div>'
-    + '</div>'
- 
-    // Activity suitability
-    + '<div class="suit-grid">';
- 
-  var activities = [
-    { key: 'swimming', icon: '🏊', label: 'Swimming' },
-    { key: 'kayaking', icon: '🚣', label: 'Kayaking' },
-    { key: 'sup',      icon: '🏄', label: 'SUP' },
-    { key: 'surfing',  icon: '🌊', label: 'Surfing' }
-  ];
- 
-  activities.forEach(function(act) {
-    var status = suit[act.key] || 'caution';
-    var cls    = status === 'good' ? 'suit-good' : status === 'poor' ? 'suit-poor' : 'suit-caution';
-    var label  = status === 'good' ? '✅ Good' : status === 'poor' ? '🔴 Poor' : '⚠️ Caution';
-    html += '<div class="suit-cell">'
-      + '<span class="suit-activity">' + act.icon + ' ' + act.label + '</span>'
-      + '<span class="suit-status ' + cls + '">' + label + '</span>'
-      + '</div>';
-  });
- 
-  html += '</div>'
- 
-    // Max wave today
-    + (data.waveMaxToday ? '<div style="padding:8px 14px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">'
+    + '</div>';
+
+  if (hasTides) {
+    html += '<div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+      + '<div style="font-family:var(--ui);font-size:14px;font-weight:700;color:' + tideColor + '">' + tideIcon + ' Tide ' + (data.tideState||'—') + '</div>'
+      + '<div style="font-size:11px;color:var(--text-muted)">Next: ' + nextStr + '</div></div>'
+      + '<div class="tide-strip">';
+    extremes.slice(0, 6).forEach(function(ex) {
+      var exDate = new Date(ex.date);
+      var exTime = exDate.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+      var exDay = exDate.toLocaleDateString('en-GB', {weekday:'short'});
+      var isNext = data.nextExtreme && ex.dt === data.nextExtreme.dt;
+      var isHigh = ex.type === 'High';
+      html += '<div class="tide-row' + (isNext?' tide-now':'') + '"><span class="tide-time">' + exTime + '</span>'
+        + '<span style="font-size:10px;color:var(--text-muted)">' + exDay + '</span>'
+        + '<span class="tide-type" style="color:' + (isHigh?'var(--frost)':'var(--text-muted)') + '">' + (isHigh?'↑ High':'↓ Low') + '</span>'
+        + '<span class="tide-height" style="color:' + (isHigh?'var(--frost)':'var(--text-muted)') + '">' + Math.abs(ex.height).toFixed(1) + 'm</span>'
+        + (isNext?'<span style="font-size:9px;background:var(--bg3);padding:1px 5px;border-radius:3px">Next</span>':'<span></span>') + '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="water-inland">Tide times are not currently available for this location.</div>';
+  }
+
+  function waterReading(value,suffix){return value===null||value===undefined?'—':value+(suffix||'');}
+  if (hasMarine) {
+    var waveArrow = cur.waveDir===null||cur.waveDir===undefined?'':windDegToArrow(cur.waveDir);
+    html += '<div class="water-strip">'
+      + '<div class="water-cell"><div class="water-val" style="color:' + (cur.waveHeight > 1.5?'var(--danger)':cur.waveHeight > 0.5?'var(--caution)':'var(--go)') + '">' + waterReading(cur.waveHeight,'m') + '</div><div class="water-label">Wave height</div><div class="water-sub">' + waveArrow + ' ' + waterReading(cur.waveDir,'°') + ' · ' + waterReading(cur.wavePeriod,'s') + '</div></div>'
+      + '<div class="water-cell"><div class="water-val" style="color:var(--frost)">' + waterReading(cur.swellHeight,'m') + '</div><div class="water-label">Swell</div><div class="water-sub">' + (cur.swellDir===null||cur.swellDir===undefined?'':windDegToArrow(cur.swellDir)) + ' ' + waterReading(cur.swellDir,'°') + '</div></div>'
+      + '<div class="water-cell"><div class="water-val">' + waterReading(cur.currentKnots,' kt') + '</div><div class="water-label">Current</div><div class="water-sub">' + (cur.currentDir===null||cur.currentDir===undefined?'':windDegToArrow(cur.currentDir)) + ' ' + waterReading(cur.currentDir,'°') + '</div></div>'
+      + '<div class="water-cell"><div class="water-val" style="color:var(--frost)">' + waterReading(cur.waterTempC,'°C') + '</div><div class="water-label">Water temp</div><div class="water-sub">&nbsp;</div></div></div>';
+
+    if (Object.keys(suit).length) {
+      html += '<div class="suit-grid">';
+      [{key:'swimming',icon:'🏊',label:'Swimming'},{key:'kayaking',icon:'🚣',label:'Kayaking'},{key:'sup',icon:'🏄',label:'SUP'},{key:'surfing',icon:'🌊',label:'Surfing'}].forEach(function(act) {
+        var status=suit[act.key]||'caution';
+        var cls=status==='good'?'suit-good':status==='poor'?'suit-poor':'suit-caution';
+        var label=status==='good'?'✅ Good':status==='poor'?'🔴 Poor':'⚠️ Caution';
+        html += '<div class="suit-cell"><span class="suit-activity">'+act.icon+' '+act.label+'</span><span class="suit-status '+cls+'">'+label+'</span></div>';
+      });
+      html += '</div>';
+    }
+  } else {
+    html += '<div class="water-inland">Wave, swell, current and water temperature data are unavailable at this inland location.</div>';
+  }
+
+  html += (data.waveMaxToday!==null&&data.waveMaxToday!==undefined ? '<div style="padding:8px 14px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">'
       + 'Max wave today: <strong>' + data.waveMaxToday + 'm</strong>'
       + (data.waveMaxToday > 2 ? ' · 🔴 Rough conditions' : data.waveMaxToday > 1 ? ' · ⚠️ Moderate' : ' · ✅ Calm')
       + '</div>' : '');
- 
+
   container.innerHTML = html;
 }
 
